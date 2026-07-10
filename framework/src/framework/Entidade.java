@@ -14,6 +14,7 @@ public class Entidade {
    public Msg msg;
    public EventoThread ethread; 
    public Thread thread1;
+   public GerenciadorConexoes conexoesSaida;
    
    public void defPortaLocal(int p){
         msg =new Msg();
@@ -26,6 +27,7 @@ public class Entidade {
        ethread = new EventoThread(this);
        thread1=new Thread(ethread);
        thread1.start();
+       this.conexoesSaida = new GerenciadorConexoes();
    }
    
    public void transicao(Evento _e){

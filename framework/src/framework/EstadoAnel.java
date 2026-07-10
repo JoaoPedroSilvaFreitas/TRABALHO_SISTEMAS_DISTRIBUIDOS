@@ -1,10 +1,13 @@
 package framework;
 
+import java.util.HashMap;
+
 public class EstadoAnel extends Estado {
     public int idLocal;
     public int idSucessor;
     public String ipSucessor;
     public int portaSucessor;
+    private final HashMap<String, String> armazenamento = new HashMap<>();
     
     // Espaço lógico do anel
     private final int TAMANHO_ANEL = 1024;
@@ -21,7 +24,7 @@ public class EstadoAnel extends Estado {
     }
 
     private int gerarId(String chave) {
-        return Math.abs(chave.hashCode()) % TAMANHO_ANEL;
+        return(chave.hashCode() & 0x7fffffff) % TAMANHO_ANEL; // Para impedir valores negativos
     }
 
     @Override
@@ -32,15 +35,92 @@ public class EstadoAnel extends Estado {
     @Override
     public void transicao(Evento _e) {
         switch (_e.code) {
+            case 1: // JOIN_REQ
+                tratarJoinReq(_e);
+                break;
+            case 2: // JOIN_RESP
+                tratarJoinResp(_e);
+                break;
             case 4: // LOOKUP_REQ
                 tratarLookupReq(_e);
                 break;
-            case 1: // JOIN_REQ
-                // A ser implementado
+            case 6:
+                tratarPutReq(_e);
+                break;
+            case 7:
+                tratarGetReq(_e);
+                break;
+            case 8:
+                tratarGetResp(_e);
                 break;
             default:
-                System.out.println("[ERRO] Evento não suportado no EstadoAnel: " + _e.code);
+                System.out.println("[ERRO] Evento não suportado: " + _e.code);
         }
+    }
+    
+    private void tratarJoinReq(Evento e) {
+        int idNovoNo = Integer.parseInt(e.C1);
+        String origemNovoNo = e.C2;
+
+        if (pertenceAoIntervalo(idLocal, idSucessor, idNovoNo)) {
+            System.out.println("[JOIN] Aceitando nó " + idNovoNo + " no anel.");
+            
+            // 1. Responde ao novo nó informando quem será o sucessor dele (meu sucessor atual ou eu mesmo)
+            Evento resp = new Evento(2, String.valueOf(idSucessor), ipSucessor + ":" + portaSucessor, null);
+            enviarMensagem(origemNovoNo, resp);
+            
+            // 2. Atualiza o MEU sucessor para ser este novo nó
+            String[] partes = origemNovoNo.split(":");
+            this.idSucessor = idNovoNo;
+            this.ipSucessor = partes[0];
+            this.portaSucessor = Integer.parseInt(partes[1]);
+        } else {
+            System.out.println("[JOIN] Repassando req do nó " + idNovoNo + " para o sucessor.");
+            enviarMensagem(ipSucessor + ":" + portaSucessor, e);
+        }
+    }
+
+    private void tratarJoinResp(Evento e) {
+        this.idSucessor = Integer.parseInt(e.C1);
+        String[] partes = e.C2.split(":");
+        this.ipSucessor = partes[0];
+        this.portaSucessor = Integer.parseInt(partes[1]);
+        System.out.println("[JOIN] Inserção concluída. Meu novo sucessor é ID: " + this.idSucessor);
+    }
+    
+    private void tratarPutReq(Evento e) {
+        int idChave = gerarId(e.C1);
+        if (pertenceAoIntervalo(idLocal, idSucessor, idChave)) {
+            armazenamento.put(e.C1, e.C2);
+            System.out.println("[ARMAZENAMENTO] Chave '" + e.C1 + "' salva localmente.");
+        } else {
+            enviarMensagem(ipSucessor + ":" + portaSucessor, e);
+        }
+    }
+
+    private void tratarGetReq(Evento e) {
+        int idChave = gerarId(e.C1);
+        String origem = e.C2;
+
+        if (pertenceAoIntervalo(idLocal, idSucessor, idChave)) {
+            String valor = armazenamento.getOrDefault(e.C1, "NULL");
+            Evento resp = new Evento(8, e.C1, valor, null);
+            enviarMensagem(origem, resp);
+        } else {
+            enviarMensagem(ipSucessor + ":" + portaSucessor, e);
+        }
+    }
+
+    private void tratarGetResp(Evento e) {
+        System.out.println("[APLICACAO] Resultado da busca pela chave '" + e.C1 + "': " + e.C2);
+    }
+    
+    // Método a ser chamado pela Main quando o nó quiser entrar na rede
+    public void iniciarJoin(String ipConhecido, int portaConhecida) {
+        System.out.println("[JOIN] Solicitando entrada via nó " + ipConhecido + ":" + portaConhecida);
+        String meuEndereco = ent.msg.pegaHostLocal() + ":" + ent.msg.lPort;
+        Evento req = new Evento(1, String.valueOf(this.idLocal), meuEndereco, null);
+        enviarMensagem(ipConhecido + ":" + portaConhecida, req);
     }
 
     private void tratarLookupReq(Evento e) {
@@ -77,17 +157,7 @@ public class EstadoAnel extends Estado {
     }
 
     private void enviarMensagem(String destino, Evento ev) {
-        String[] partes = destino.split(":");
-        String ip = partes[0];
-        int porta = Integer.parseInt(partes[1]);
-        
-        Msg enviador = new Msg();
-        if (enviador.conecta(ip, porta) == 0) {
-            // Utiliza a vírgula herdada do Evento.toString() e adiciona quebra de linha para o BufferedReader do destino
-            enviador.envia(ev.toString() + "\n");
-            enviador.termina();
-        } else {
-            System.out.println("[ERRO] Falha de conexão ao repassar mensagem para: " + destino);
-        }
+        ent.conexoesSaida.enviarMensagem(destino, ev);
     }
+ 
 }

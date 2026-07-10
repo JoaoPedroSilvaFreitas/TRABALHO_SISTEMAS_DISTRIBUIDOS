@@ -10,14 +10,15 @@ public class Main {
         // Define a porta local (ex: 8080)
         noLocal.defPortaLocal(8080);
 
+        String ipLocal = noLocal.msg.pegaHostLocal();            
+
         // 2. Definição do Estado Inicial
-        EstadoDHTInicial estadoInicial = new EstadoDHTInicial(noLocal);
+        EstadoAnel estadoInicial = new EstadoAnel(noLocal, ipLocal, 8080);
         noLocal.mudaEstado(estadoInicial);
 
         // 3. Inicialização da Thread de Rede (usando a especialização)
-        SocketThreadCustomizada threadRede = new SocketThreadCustomizada(noLocal.msg, noLocal);
-        Thread tRede = new Thread(threadRede);
-        tRede.start();
+        ServidorRedeDHT servidor = new ServidorRedeDHT(noLocal, 8080);
+        new Thread(servidor).start();
 
         // 4. Injeção manual de um evento para teste (Simulando uma ação do usuário)
         System.out.println("Injetando evento de teste manual no buffer...");
@@ -29,49 +30,3 @@ public class Main {
     }
 }
 
-// --- CLASSES DE ESPECIALIZAÇÃO PARA DEBUG ---
-
-// Especialização da SocketThread para visualizar o desempacotamento
-class SocketThreadCustomizada extends SocketThread {
-
-    public SocketThreadCustomizada(Msg _m, Entidade _u) {
-        super(_m, _u);
-    }
-
-    @Override
-    public void desempacota() {
-        System.out.println("[REDE] Desempacotando mensagem: " + tmp);
-        // Aqui você converteria a string 'tmp' em um objeto Evento
-        // e usaria ent.colocaEvento(novoEvento);
-    }
-}
-
-// Especialização do Estado para mapear as transições e processar eventos
-class EstadoDHTInicial extends Estado {
-
-    public EstadoDHTInicial(Entidade _e) {
-        super(_e);
-    }
-
-    @Override
-    public void acao() {
-        System.out.println("[ESTADO] Nó entrou no Estado Inicial.");
-    }
-
-    @Override
-    public void transicao(Evento _e) {
-        System.out.println("[TRANSICAO] Processando Evento Code: " + _e.code);
-        
-        switch (_e.code) {
-            case 1:
-                System.out.println("[LOGICA] Mensagem recebida C1: " + _e.C1);
-                break;
-            case 3:
-                System.out.println("[LOGICA] Timeout atingido. Possível falha de nó vizinho.");
-                break;
-            default:
-                System.out.println("[ERRO] Evento desconhecido.");
-                break;
-        }
-    }
-}
