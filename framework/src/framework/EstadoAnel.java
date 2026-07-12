@@ -208,7 +208,7 @@ public class EstadoAnel extends Estado {
 
     private void tratarPutReq(Evento e) {
         int idChave = gerarId(e.C1);
-        if (pertenceAoIntervalo(idLocal, idSucessor, idChave)) {
+        if (souResponsavel(idChave)) {
             armazenamento.put(e.C1, e.C2);
             System.out.println("[ARMAZENAMENTO] Chave '" + e.C1 + "' salva localmente.");
             exportarStatus();
@@ -221,7 +221,7 @@ public class EstadoAnel extends Estado {
         int idChave = gerarId(e.C1);
         String origem = e.C2;
 
-        if (pertenceAoIntervalo(idLocal, idSucessor, idChave)) {
+        if (souResponsavel(idChave)) {
             String valor = armazenamento.getOrDefault(e.C1, "NULL");
             Evento resp = new Evento(8, e.C1, valor, null);
             enviarMensagem(origem, resp);
@@ -257,7 +257,7 @@ public class EstadoAnel extends Estado {
         int idBusca = Integer.parseInt(e.C1);
         String origem = e.C2; // Formato esperado: "IP:Porta"
 
-        boolean responsavel = pertenceAoIntervalo(idLocal, idSucessor, idBusca);
+        boolean responsavel = souResponsavel(idBusca);
 
         if (responsavel) {
             System.out.println("[ROTEAMENTO] Responsabilidade confirmada para a chave: " + idBusca);
@@ -271,6 +271,12 @@ public class EstadoAnel extends Estado {
             // Repassa o evento original inalterado para o sucessor
             enviarMensagem(ipSucessor + ":" + portaSucessor, e);
         }
+    }
+
+    // No Chord, cada nó responde pelas chaves no intervalo
+    // (seu predecessor, seu próprio ID].
+    private boolean souResponsavel(int idChave) {
+        return pertenceAoIntervalo(idPredecessor, idLocal, idChave);
     }
 
     private boolean pertenceAoIntervalo(int atual, int sucessor, int busca) {
