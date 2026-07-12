@@ -102,7 +102,7 @@ O PUT/GET é roteado automaticamente pelo anel até o nó responsável pela chav
 Abre `dht_ring_viz.html` no navegador. Ele faz uma busca em largura a partir da porta informada (padrão `8080`), seguindo os ponteiros de sucessor/predecessor de cada nó para descobrir automaticamente todo o anel — não é preciso listar cada porta manualmente. Mostra:
 - O anel desenhado com a posição real de cada nó no espaço de IDs (0–1023).
 - Setas indicando o sucessor de cada nó.
-- Uma tabela com ID, endereço, sucessor, predecessor e as chaves armazenadas em cada nó.
+- Uma tabela com ID, endereço, sucessor, predecessor e as chaves armazenadas em cada nó, incluindo o ID hash de cada chave.
 
 Nós que pararam de atualizar seu status por mais de 12s (processo encerrado) somem automaticamente da visualização.
 

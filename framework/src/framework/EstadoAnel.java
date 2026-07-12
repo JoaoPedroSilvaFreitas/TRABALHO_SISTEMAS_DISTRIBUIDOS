@@ -78,7 +78,8 @@ public class EstadoAnel extends Estado {
         for (Map.Entry<String, String> par : armazenamento.entrySet()) {
             if (!primeira) chavesJson.append(",");
             chavesJson.append("{\"chave\":\"").append(escapeJson(par.getKey()))
-                    .append("\",\"valor\":\"").append(escapeJson(par.getValue())).append("\"}");
+                    .append("\",\"id\":").append(gerarId(par.getKey()))
+                    .append(",\"valor\":\"").append(escapeJson(par.getValue())).append("\"}");
             primeira = false;
         }
         chavesJson.append("]");
