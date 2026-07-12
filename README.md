@@ -51,6 +51,7 @@ framework/
 | 7 / 8 | GET / GET_RESP | Busca o valor de uma chave e retorna ao solicitante |
 | 9 | NOTIFY | Um nó avisa outro "acho que sou seu predecessor agora" |
 | 10 / 11 | ASK_PREDECESSOR / RESP | Usado na estabilização: pergunta ao sucessor quem é o predecessor dele |
+| 12 / 13 | TRANSFER_KEYS_REQ / TRANSFER_KEY | Solicita e envia ao novo nó as chaves que passaram a pertencer a ele após o JOIN |
 
 Cada nó mantém `idSucessor`/`ipSucessor`/`portaSucessor` e `idPredecessor`/`ipPredecessor`/`portaPredecessor`. A estabilização roda a cada 5s (reagendando um novo `Timeout` a cada rodada) e corrige o anel caso ele tenha ficado inconsistente.
 
@@ -115,7 +116,7 @@ Ou `sair` / Ctrl+C em cada terminal individualmente.
 
 ## Problemas conhecidos / limitações desta implementação simplificada
 
-- **Transferência de chaves no JOIN é local ao par envolvido**: quando um novo nó entra, apenas o nó que aceitou o JOIN diretamente transfere chaves para ele. Se o dado "correto" estivesse fisicamente em outro nó do anel (por ter sido inserido antes desse novo nó existir), ele não migra retroativamente — fica fisicamente "órfão" no nó antigo, mesmo que o roteamento por hash já aponte para o nó novo. Isso difere do Chord real, onde a invariante de que "o sucessor imediato sempre tem as chaves do seu intervalo" é mantida através de uma busca de sucessor completa no momento do JOIN, não apenas do nó de bootstrap.
+- **Transferência sem confirmação**: durante o JOIN, o sucessor envia ao novo nó as chaves de `(predecessor, novo nó]`, mas esta versão simplificada não espera uma confirmação de recebimento antes de remover a cópia antiga. Uma falha de rede exatamente durante a migração pode causar perda de dados.
 - **Sem finger table**: roteamento é O(N), cada nó só conhece o vizinho imediato — é a simplificação pretendida pelo enunciado, não um bug.
 - **Sem detecção de falha de nó**: se um nó cair sem avisar, seu sucessor/predecessor só percebe via estabilização (a cada 5s), e não há lógica de fallback para saltar o nó morto além de reencontrar o novo sucessor pela cadeia.
 - **IP fixo em `127.0.0.1`**: necessário para testes na mesma máquina, porque `InetAddress.getLocalHost()` pode resolver para outro endereço (ex: `127.0.1.1` no `/etc/hosts` do Ubuntu), fazendo os nós se identificarem de formas inconsistentes entre si.

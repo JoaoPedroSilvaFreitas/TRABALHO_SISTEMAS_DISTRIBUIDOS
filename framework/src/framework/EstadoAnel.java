@@ -145,6 +145,12 @@ public class EstadoAnel extends Estado {
                      // que foi solicitado no nó anterior
                 tratarPredecessorResp(_e);
                 break;
+            case 12: // TRANSFER_KEYS_REQ
+                tratarTransferKeysReq(_e);
+                break;
+            case 13: // TRANSFER_KEY
+                tratarTransferKey(_e);
+                break;
 
             default:
                 System.out.println("[ERRO] Evento não suportado: " + _e.code);
@@ -173,9 +179,6 @@ public class EstadoAnel extends Estado {
             this.ipSucessor = partes[0];
             this.portaSucessor = Integer.parseInt(partes[1]);
 
-            // arrumar a ordem -> ja que inseriu um nó novo, tem novo intervalo de
-            // atribuições e tem que transferir os dados
-            transferirChaves(idNovoNo, origemNovoNo);
             exportarStatus();
 
         } else {
@@ -204,6 +207,12 @@ public class EstadoAnel extends Estado {
         String meuEndereco = ipLocal + ":" + portaLocal;
         Evento notify = new Evento(9, String.valueOf(idLocal), meuEndereco, null);
         enviarMensagem(ipSucessor + ":" + portaSucessor, notify);
+
+        // Antes do JOIN, o sucessor armazenava também as chaves que agora pertencem
+        // ao novo nó. Solicita a ele as chaves do intervalo (predecessor, local].
+        Evento transferencia = new Evento(12, String.valueOf(idPredecessor),
+                String.valueOf(idLocal), meuEndereco);
+        enviarMensagem(ipSucessor + ":" + portaSucessor, transferencia);
     }
 
     private void tratarPutReq(Evento e) {
@@ -372,19 +381,38 @@ public class EstadoAnel extends Estado {
         enviarMensagem(ipSucessor + ":" + portaSucessor, notify);
     }
 
-    private void transferirChaves(int idNovoNo, String enderecoNovoNo) {
+    private void tratarTransferKeysReq(Evento e) {
+        int idPredecessorNovoNo = Integer.parseInt(e.C1);
+        int idNovoNo = Integer.parseInt(e.C2);
+        String enderecoNovoNo = e.C3;
+        int totalTransferido = 0;
+
         Iterator<Map.Entry<String, String>> it = armazenamento.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<String, String> par = it.next();
             int idChave = gerarId(par.getKey());
-            // A chave pertence ao novo nó se está entre o antigo predecessor de "novoNo" e
-            // ele mesmo
-            if (pertenceAoIntervalo(idPredecessor, idNovoNo, idChave)) {
-                Evento put = new Evento(6, par.getKey(), par.getValue(), null);
-                enviarMensagem(enderecoNovoNo, put);
+
+            if (pertenceAoIntervalo(idPredecessorNovoNo, idNovoNo, idChave)) {
+                // Evento próprio de transferência: o destino armazena diretamente, sem
+                // recalcular a rota enquanto o anel ainda está se estabilizando.
+                Evento chaveTransferida = new Evento(13, par.getKey(), par.getValue(), null);
+                enviarMensagem(enderecoNovoNo, chaveTransferida);
                 it.remove();
+                totalTransferido++;
             }
         }
+
+        if (totalTransferido > 0) {
+            System.out.println("[TRANSFERENCIA] " + totalTransferido
+                    + " chave(s) enviada(s) ao novo nó " + idNovoNo + ".");
+            exportarStatus();
+        }
+    }
+
+    private void tratarTransferKey(Evento e) {
+        armazenamento.put(e.C1, e.C2);
+        System.out.println("[TRANSFERENCIA] Chave '" + e.C1 + "' recebida do antigo responsável.");
+        exportarStatus();
     }
 
 }
