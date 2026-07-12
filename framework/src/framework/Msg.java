@@ -84,8 +84,9 @@ public class Msg {
         //Cria a Stream de saida de dados 
         try {
                 ps = new PrintStream(sc.getOutputStream());
-                //Imprime uma linha para a stream de saída de dados  
-                ps.print(_msg);  
+                //Imprime uma linha para a stream de saída de dados
+                ps.print(_msg);
+                ps.flush();
         } catch (IOException e2) {
                 // TODO Auto-generated catch block
                 // e2.printStackTrace();
