@@ -56,6 +56,8 @@ Cada nó mantém `idSucessor`/`ipSucessor`/`portaSucessor` e `idPredecessor`/`ip
 
 ## Passo a passo para rodar
 
+Os comandos abaixo usam `./dht.sh` (Linux/macOS/WSL/Git Bash). No Windows sem bash, use `dht.bat` com a mesma sintaxe (ex: `dht.bat compilar`, `dht.bat no 8080`) — precisa de Python instalado e no PATH para o `status-server`.
+
 ### 1. Compilar
 
 ```bash
