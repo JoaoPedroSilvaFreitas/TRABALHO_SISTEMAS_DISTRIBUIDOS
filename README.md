@@ -6,7 +6,7 @@ Implementação de um protocolo DHT simplificado (estilo Chord) usando o framewo
 
 Uma DHT (Distributed Hash Table) espalha um dicionário chave→valor entre vários nós de uma rede, de forma que cada nó guarda só uma fatia dos dados, mas qualquer nó consegue encontrar qualquer chave.
 
-1. **Espaço de endereçamento único (hashing)** — nós e chaves são mapeados para o mesmo espaço numérico `[0, 1024)` via hash (`String.hashCode()` mod 1024).
+1. **Espaço de endereçamento único (hashing)** — nós e chaves são mapeados para o mesmo espaço numérico `[0, 1024)` usando SHA-256 e redução módulo 1024.
 2. **Anel lógico** — os IDs formam um círculo. Uma chave pertence ao primeiro nó cujo ID seja maior ou igual ao ID da chave (o **sucessor** da chave).
 3. **Roteamento simplificado** — cada nó só conhece seu sucessor e predecessor imediatos (não uma finger table completa como no Chord real). Uma busca é repassada nó a nó até achar o responsável — O(N) no pior caso, não O(log N).
 

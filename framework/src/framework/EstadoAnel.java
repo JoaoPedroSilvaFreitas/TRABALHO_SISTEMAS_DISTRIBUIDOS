@@ -6,6 +6,9 @@ import java.util.Iterator;
 import java.io.FileWriter;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 public class EstadoAnel extends Estado {
     public int idLocal;
@@ -45,7 +48,18 @@ public class EstadoAnel extends Estado {
     }
 
     private int gerarId(String chave) {
-        return (chave.hashCode() & 0x7fffffff) % TAMANHO_ANEL; // Para impedir valores negativos
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256")
+                    .digest(chave.getBytes(StandardCharsets.UTF_8));
+
+            // Combina os dois primeiros bytes do SHA-256 e os reduz ao espaço
+            // lógico do anel. Como 1024 = 2^10, o resultado fica entre 0 e 1023.
+            int primeirosBits = ((hash[0] & 0xff) << 8) | (hash[1] & 0xff);
+            return primeirosBits % TAMANHO_ANEL;
+        } catch (NoSuchAlgorithmException ex) {
+            // SHA-256 faz parte obrigatória da plataforma Java.
+            throw new IllegalStateException("SHA-256 não está disponível", ex);
+        }
     }
 
     private String escapeJson(String s) {
