@@ -1,65 +1,119 @@
-#Trabalho Sistemas Distribuídos
+# Trabalho Sistemas Distribuídos
 
-Implementação do Protoloco DHT Simplificado usando o framework dado em sala
+Implementação de um protocolo DHT simplificado (estilo Chord) usando o framework de máquina de estados orientada a eventos dado em sala.
 
+## Conceito da DHT
 
+Uma DHT (Distributed Hash Table) espalha um dicionário chave→valor entre vários nós de uma rede, de forma que cada nó guarda só uma fatia dos dados, mas qualquer nó consegue encontrar qualquer chave.
 
-1. Espaço de Endereçamento Único (Hashing): Tanto os dados (chaves) quanto os servidores (nós) são mapeados para o mesmo espaço de identificadores numéricos usando uma função de hash (como SHA-1). A chave do dado vira um ID: $ID_{dado} = \text{hash}(\text{"foto.jpg"})$ O nó vira um ID: $ID_{no} = \text{hash}(\text{"192.168.1.50"})$
+1. **Espaço de endereçamento único (hashing)** — nós e chaves são mapeados para o mesmo espaço numérico `[0, 1024)` via hash (`String.hashCode()` mod 1024).
+2. **Anel lógico** — os IDs formam um círculo. Uma chave pertence ao primeiro nó cujo ID seja maior ou igual ao ID da chave (o **sucessor** da chave).
+3. **Roteamento simplificado** — cada nó só conhece seu sucessor e predecessor imediatos (não uma finger table completa como no Chord real). Uma busca é repassada nó a nó até achar o responsável — O(N) no pior caso, não O(log N).
 
+## Estrutura do projeto
 
-2. Atribuição de Responsabilidade: Uma regra matemática simples determina qual nó armazena qual chave. No modelo simplificado mais comum (anel lógico do Chord):A chave é armazenada no primeiro nó cujo ID seja maior ou igual ao ID da chave (chamado de nó sucessor).
+```
+framework/
+├── src/framework/
+│   ├── Entidade.java        # nó da rede: buffer de eventos + thread de trabalho + estado atual
+│   ├── Estado.java          # classe base para os estados da máquina (acao/transicao)
+│   ├── EstadoAnel.java      # ESTADO CONCRETO: toda a lógica do protocolo DHT vive aqui
+│   ├── Evento.java          # "PDU" do protocolo: code + C1/C2/C3 (campos genéricos de texto)
+│   ├── EventoThread.java    # thread que roda o loop de eventos da Entidade
+│   ├── Msg.java             # encapsula sockets TCP (conectar, enviar, receber)
+│   ├── GerenciadorConexoes.java  # pool de conexões de saída, reaproveita sockets abertos
+│   ├── ServidorRedeDHT.java # servidor de rede: aceita conexões e desempacota mensagens
+│   ├── SocketThread.java    # classe base genérica do framework (não usada em produção aqui)
+│   ├── SocketThreadDHT.java # especialização alternativa (não usada; ServidorRedeDHT é o ativo)
+│   ├── Timeout.java         # dispara um Evento(code=3) após N ms, uma única vez
+│   └── Main.java            # ponto de entrada: sobe um nó, faz JOIN opcional, abre console
+├── dht_ring_viz.html         # visualizador web do anel (posição dos nós, sucessor/predecessor, chaves)
+├── status_server.py          # servidor HTTP local que expõe dht_status/*.json para o visualizador
+└── dht.sh                    # script auxiliar: compilar, subir nós, status-server, visualizador
+```
 
+### Como as peças se encaixam
 
-3. Roteamento (Busca): Em uma DHT real, cada nó conhece apenas alguns vizinhos (tabelas de roteamento como a Finger Table do Chord) para garantir buscas em tempo logarítmico ($O(\log N)$). Em uma DHT simplificada ao extremo:Cada nó conhece apenas o seu sucessor imediato na rede, formando um anel linear.Fluxo de busca: Se o Nó A procura pela chave 15, ele verifica se ele é o responsável. Se não for, ele passa a requisição para o seu sucessor, que faz o mesmo, repetindo o processo linearmente ($O(N)$) até encontrar o nó correto.
+- `Entidade` é o "motor": mantém uma fila (`buffer`) de `Evento`s e uma thread (`EventoThread`) que fica em loop infinito processando essa fila, chamando `transicao()` no estado atual.
+- `EstadoAnel` é o único estado concreto implementado — nele mora toda a lógica de JOIN, roteamento, armazenamento e estabilização do anel.
+- `ServidorRedeDHT` escuta conexões TCP, lê mensagens de texto (`code,C1,C2,C3`) e as transforma em `Evento`s colocados no buffer da `Entidade`.
+- `GerenciadorConexoes` mantém um cache de sockets de saída por destino, evitando reabrir conexão a cada mensagem.
 
+### Eventos do protocolo (`Evento.code`)
 
+| Code | Nome | Papel |
+|---|---|---|
+| 1 | JOIN_REQ | Novo nó pede entrada no anel via um nó já conhecido |
+| 2 | JOIN_RESP | Resposta informando sucessor e predecessor do novo nó |
+| 3 | TIMEOUT | Disparado periodicamente, aciona a rotina de estabilização |
+| 4 / 5 | LOOKUP_REQ / RESP | Descobre qual nó é responsável por uma chave, sem mexer em dados |
+| 6 | PUT | Armazena um par chave-valor no nó responsável |
+| 7 / 8 | GET / GET_RESP | Busca o valor de uma chave e retorna ao solicitante |
+| 9 | NOTIFY | Um nó avisa outro "acho que sou seu predecessor agora" |
+| 10 / 11 | ASK_PREDECESSOR / RESP | Usado na estabilização: pergunta ao sucessor quem é o predecessor dele |
 
+Cada nó mantém `idSucessor`/`ipSucessor`/`portaSucessor` e `idPredecessor`/`ipPredecessor`/`portaPredecessor`. A estabilização roda a cada 5s (reagendando um novo `Timeout` a cada rodada) e corrige o anel caso ele tenha ficado inconsistente.
 
+## Passo a passo para rodar
 
+### 1. Compilar
 
+```bash
+cd framework
+./dht.sh compilar
+```
 
+### 2. Subir o servidor de status (opcional, só para o visualizador)
 
+Em um terminal:
+```bash
+./dht.sh status-server
+```
+Serve os arquivos `dht_status/*.json` (gravados pelos nós) em `http://localhost:9000`, com CORS liberado para o visualizador conseguir buscar via `fetch()`.
 
+### 3. Subir nós
 
+Cada nó é um processo Java independente, numa porta própria. Em terminais separados:
 
+```bash
+./dht.sh no 8080                    # primeiro nó, sozinho no anel
+./dht.sh no 8081 127.0.0.1 8080     # segundo nó, entra via JOIN no 8080
+./dht.sh no 8082 127.0.0.1 8080     # terceiro nó, também usa 8080 como bootstrap
+```
 
+O IP de bootstrap é sempre `127.0.0.1` para testes na mesma máquina — não é necessário nem correto usar `127.0.1.1` ou o hostname da máquina (veja "Problemas conhecidos" abaixo).
 
-1. Definição do Espaço de Chaves (Hashing)
-Estabelecer a função de hash (ex: SHA-1 ou funções mais simples para fins educacionais) para gerar identificadores numéricos (IDs) para os nós (baseado no IP/Porta) e para os dados (chaves). O espaço circular de IDs é o núcleo de qualquer DHT.
+Cada nó abre um console interativo simples:
+```
+put foto.jpg dadosdaimagem
+get foto.jpg
+sair
+```
+O PUT/GET é roteado automaticamente pelo anel até o nó responsável pela chave, não importa em qual nó você digitou o comando.
 
-2. Mapeamento do Protocolo na Classe Evento
-A classe Evento atual limita o tráfego a três atributos de texto (C1, C2, C3). Isso exige a definição de um protocolo estrito de serialização.
+### 4. Abrir o visualizador
 
-Atribuição do code: Definir constantes para as chamadas da DHT (ex: 1 = JOIN, 2 = FIND_SUCCESSOR, 3 = NOTIFY, 4 = PUT, 5 = GET).
+```bash
+./dht.sh visualizador
+```
+Abre `dht_ring_viz.html` no navegador. Ele faz uma busca em largura a partir da porta informada (padrão `8080`), seguindo os ponteiros de sucessor/predecessor de cada nó para descobrir automaticamente todo o anel — não é preciso listar cada porta manualmente. Mostra:
+- O anel desenhado com a posição real de cada nó no espaço de IDs (0–1023).
+- Setas indicando o sucessor de cada nó.
+- Uma tabela com ID, endereço, sucessor, predecessor e as chaves armazenadas em cada nó.
 
-Padronização das Strings: Estabelecer o conteúdo exato de cada variável por operação. Para FIND_SUCCESSOR, a estrutura poderia ser: C1 = "IP:Porta de Origem", C2 = "ID procurado", C3 = "IP:Porta de retorno". Para requisições que exigem múltiplos parâmetros, os dados deverão ser concatenados em um único campo (ex: C3 com dados formatados em JSON ou separados por delimitadores).
+Nós que pararam de atualizar seu status por mais de 12s (processo encerrado) somem automaticamente da visualização.
 
-3. Especialização da SocketThread
-Criar uma classe concreta que herde de SocketThread e implemente o método desempacota().
+### 5. Encerrar
 
-A rotina deverá processar a string armazenada em tmp, separá-la, converter os dados pertinentes, instanciar o objeto Evento correspondente e inseri-lo no buffer utilizando ent.colocaEvento().
+```bash
+./dht.sh listar        # ver quais nós estão rodando
+./dht.sh parar-tudo     # encerrar todos de uma vez
+```
+Ou `sair` / Ctrl+C em cada terminal individualmente.
 
-4. Estruturas de Roteamento e Armazenamento Local
-Criar a classe principal do nó da rede que herde de Entidade.
+## Problemas conhecidos / limitações desta implementação simplificada
 
-Embutir nesta classe as propriedades estruturais da DHT:
-
-ID do nó.
-
-Apontadores para o nó Predecessor e Sucessor.
-
-Tabela de roteamento (Finger Table no Chord ou k-buckets no Kademlia).
-
-Dicionário de dados (HashMap<String, String>) para armazenar os pares chave-valor de responsabilidade daquele nó específico.
-
-5. Lógica da Máquina de Estados (Estado)
-Implementar as fases de operação da DHT derivando da classe base Estado.
-
-Estados necessários: Bootstrapping (contatando um nó conhecido para entrar na rede), TransferindoDados (assumindo a responsabilidade por chaves específicas após a entrada) e Operacional (processando buscas).
-
-No estado Operacional, o método transicao(Evento e) deve conter a lógica de roteamento: ao receber uma requisição de busca, verificar matematicamente se o ID recai sobre a jurisdição do nó atual; se sim, processa o pedido, se não, repassa o evento via Msg.envia() para o nó mais próximo identificado na tabela de roteamento.
-
-6. Manutenção da Topologia da Rede (Timeout)
-Utilizar a classe Timeout existente para gerar os sinais de manutenção.
-
-A máquina de estados precisará interceptar o evento gerado (code = 3 conforme a classe Timeout.java) para engatilhar processos de estabilização (stabilize), como o disparo de pings periódicos aos nós vizinhos para garantir que o anel lógico não foi rompido por desconexões abruptas.
+- **Transferência de chaves no JOIN é local ao par envolvido**: quando um novo nó entra, apenas o nó que aceitou o JOIN diretamente transfere chaves para ele. Se o dado "correto" estivesse fisicamente em outro nó do anel (por ter sido inserido antes desse novo nó existir), ele não migra retroativamente — fica fisicamente "órfão" no nó antigo, mesmo que o roteamento por hash já aponte para o nó novo. Isso difere do Chord real, onde a invariante de que "o sucessor imediato sempre tem as chaves do seu intervalo" é mantida através de uma busca de sucessor completa no momento do JOIN, não apenas do nó de bootstrap.
+- **Sem finger table**: roteamento é O(N), cada nó só conhece o vizinho imediato — é a simplificação pretendida pelo enunciado, não um bug.
+- **Sem detecção de falha de nó**: se um nó cair sem avisar, seu sucessor/predecessor só percebe via estabilização (a cada 5s), e não há lógica de fallback para saltar o nó morto além de reencontrar o novo sucessor pela cadeia.
+- **IP fixo em `127.0.0.1`**: necessário para testes na mesma máquina, porque `InetAddress.getLocalHost()` pode resolver para outro endereço (ex: `127.0.1.1` no `/etc/hosts` do Ubuntu), fazendo os nós se identificarem de formas inconsistentes entre si.

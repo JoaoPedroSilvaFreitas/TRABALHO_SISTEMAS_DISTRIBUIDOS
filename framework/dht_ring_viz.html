@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Visualizador do Anel DHT</title>
+<style>
+  :root {
+    --bg: #eef1f5;
+    --panel: #ffffff;
+    --ink: #101826;
+    --ink-dim: #55606f;
+    --line: #d3dae3;
+    --accent: #0a6cff;
+    --accent-dim: #0a6cff22;
+    --ok: #16a34a;
+    --warn: #d97706;
+    --ring-track: #c7d1dd;
+    --mono-bg: #f4f6f9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0f16;
+      --panel: #121822;
+      --ink: #e7ecf3;
+      --ink-dim: #8a97a8;
+      --line: #232d3b;
+      --accent: #4da3ff;
+      --accent-dim: #4da3ff22;
+      --ok: #34d17a;
+      --warn: #f0a93f;
+      --ring-track: #2a3444;
+      --mono-bg: #0e141e;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    margin: 0;
+    padding: 2rem;
+    min-height: 100vh;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+  }
+
+  h1 {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 1.65rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .subtitle {
+    color: var(--ink-dim);
+    font-size: 0.92rem;
+    margin-top: 0.2rem;
+  }
+
+  .status-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    color: var(--ink-dim);
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ink-dim);
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .dot.live { background: var(--ok); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .dot.stale { background: var(--warn); }
+
+  .config-bar {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0.65rem 0.9rem;
+    font-size: 0.85rem;
+  }
+  .config-bar label {
+    color: var(--ink-dim);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .config-bar input {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    background: var(--mono-bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0.35rem 0.5rem;
+    color: var(--ink);
+    width: 8ch;
+  }
+  .config-bar button {
+    font-family: inherit;
+    font-size: 0.82rem;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.4rem 0.85rem;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .config-bar button:hover { filter: brightness(1.08); }
+  .config-bar .hint { color: var(--ink-dim); font-size: 0.78rem; margin-left: auto; }
+
+  main {
+    display: grid;
+    grid-template-columns: minmax(320px, 420px) 1fr;
+    gap: 1.5rem;
+  }
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; }
+  }
+
+  .ring-panel, .table-panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.25rem;
+  }
+
+  .ring-panel h2, .table-panel h2 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--ink-dim);
+    margin: 0 0 1rem 0;
+    font-weight: 600;
+  }
+
+  canvas {
+    width: 100%;
+    display: block;
+  }
+
+  .empty-msg {
+    color: var(--ink-dim);
+    font-size: 0.88rem;
+    text-align: center;
+    padding: 2rem 1rem;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    line-height: 1.6;
+  }
+  .empty-msg code {
+    background: var(--mono-bg);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0.1rem 0.4rem;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+  }
+  th {
+    text-align: left;
+    color: var(--ink-dim);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.68rem;
+    padding: 0 0.6rem 0.5rem 0.6rem;
+    border-bottom: 1px solid var(--line);
+  }
+  td {
+    padding: 0.55rem 0.6rem;
+    border-bottom: 1px solid var(--line);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    vertical-align: top;
+  }
+  td:last-child {
+    white-space: normal;
+  }
+  tr:last-child td { border-bottom: none; }
+
+  .id-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.4em;
+    padding: 0.1rem 0.4rem;
+    border-radius: 5px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .table-scroll {
+    overflow-x: auto;
+  }
+
+  .chaves-lista {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    white-space: normal;
+  }
+  .chaves-vazio {
+    color: var(--ink-dim);
+    font-style: italic;
+  }
+  .chave-item {
+    display: flex;
+    gap: 0.4rem;
+    align-items: baseline;
+  }
+  .chave-item .k {
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .chave-item .v {
+    color: var(--ink-dim);
+  }
+  details.chaves-toggle summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 600;
+    list-style: none;
+  }
+  details.chaves-toggle summary::-webkit-details-marker { display: none; }
+  details.chaves-toggle summary::before {
+    content: "▸ ";
+  }
+  details.chaves-toggle[open] summary::before {
+    content: "▾ ";
+  }
+  details.chaves-toggle .chaves-lista {
+    margin-top: 0.4rem;
+  }
+
+  footer {
+    color: var(--ink-dim);
+    font-size: 0.78rem;
+    text-align: center;
+    padding-top: 0.5rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Anel DHT — visualizador ao vivo</h1>
+      <div class="subtitle">Posição dos nós no espaço lógico de IDs (0–1023), sucessor e predecessor de cada um</div>
+    </div>
+    <div class="status-line">
+      <span class="dot" id="statusDot"></span>
+      <span id="statusText">aguardando primeira leitura…</span>
+    </div>
+  </header>
+
+  <div class="config-bar">
+    <label for="serverUrl">Servidor de status</label>
+    <input type="text" id="serverUrl" value="http://localhost:9000" style="width: 18ch;">
+    <label for="portsInput">Porta(s) inicial(is)</label>
+    <input type="text" id="portsInput" value="8080" style="width: 16ch;">
+    <button id="applyBtn">Aplicar</button>
+    <span class="hint">Descobre o resto do anel seguindo sucessor/predecessor · atualiza a cada 2s</span>
+  </div>
+
+  <main>
+    <div class="ring-panel">
+      <h2>Espaço de IDs</h2>
+      <canvas id="ringCanvas" width="760" height="760"></canvas>
+    </div>
+
+    <div class="table-panel">
+      <h2>Estado por nó</h2>
+      <div class="table-scroll">
+        <table id="nodeTable">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Endereço</th>
+              <th>Sucessor</th>
+              <th>Predecessor</th>
+              <th>Chaves armazenadas</th>
+            </tr>
+          </thead>
+          <tbody id="nodeTableBody"></tbody>
+        </table>
+      </div>
+      <div class="empty-msg" id="emptyMsg" style="display:none;">
+        Nenhum nó respondeu ainda.<br>
+        Confirme que <code>status_server.py</code> está rodando na mesma pasta onde os processos <code>java framework.Main</code> gravam <code>dht_status/</code>, e que as portas acima batem com as que você usou.
+      </div>
+    </div>
+  </main>
+
+  <footer>TAMANHO_ANEL = 1024 · leitura via fetch() de arquivos JSON estáticos por nó</footer>
+</div>
+
+<script>
+  const TAMANHO_ANEL = 1024;
+  const canvas = document.getElementById('ringCanvas');
+  const ctx = canvas.getContext('2d');
+  const dot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const tbody = document.getElementById('nodeTableBody');
+  const emptyMsg = document.getElementById('emptyMsg');
+  const table = document.getElementById('nodeTable');
+
+  let ultimoSucesso = 0;
+
+  function corDeAcento() {
+    return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+  }
+  function corDeTrack() {
+    return getComputedStyle(document.documentElement).getPropertyValue('--ring-track').trim();
+  }
+  function corDeInk() {
+    return getComputedStyle(document.documentElement).getPropertyValue('--ink').trim();
+  }
+  function corDeInkDim() {
+    return getComputedStyle(document.documentElement).getPropertyValue('--ink-dim').trim();
+  }
+  function corDePainel() {
+    return getComputedStyle(document.documentElement).getPropertyValue('--panel').trim();
+  }
+
+  function anguloPorId(id) {
+    return (id / TAMANHO_ANEL) * Math.PI * 2 - Math.PI / 2;
+  }
+
+  function desenharAnel(nos) {
+    const dpr = window.devicePixelRatio || 1;
+    const cssSize = canvas.clientWidth || 420;
+    canvas.width = cssSize * dpr;
+    canvas.height = cssSize * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const size = cssSize;
+    const cx = size / 2, cy = size / 2;
+    const r = size * 0.38;
+
+    ctx.clearRect(0, 0, size, size);
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = corDeTrack();
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.font = '11px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = corDeInkDim();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    [0, 256, 512, 768].forEach(marca => {
+      const ang = anguloPorId(marca);
+      const mx = cx + Math.cos(ang) * (r + 18);
+      const my = cy + Math.sin(ang) * (r + 18);
+      ctx.fillText(marca, mx, my);
+    });
+
+    if (nos.length === 0) return;
+
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = corDeAcento();
+    ctx.globalAlpha = 0.55;
+    nos.forEach(no => {
+      if (no.idSucessor === no.idLocal) return;
+      const a1 = anguloPorId(no.idLocal);
+      const a2 = anguloPorId(no.idSucessor);
+      const x1 = cx + Math.cos(a1) * r, y1 = cy + Math.sin(a1) * r;
+      const x2 = cx + Math.cos(a2) * r, y2 = cy + Math.sin(a2) * r;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      const mx = (x1 + x2) / 2 + (cx - (x1 + x2) / 2) * 0.15;
+      const my = (y1 + y2) / 2 + (cy - (y1 + y2) / 2) * 0.15;
+      ctx.quadraticCurveTo(mx, my, x2, y2);
+      ctx.stroke();
+
+      const angSeta = Math.atan2(y2 - my, x2 - mx);
+      const tam = 6;
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - tam * Math.cos(angSeta - 0.4), y2 - tam * Math.sin(angSeta - 0.4));
+      ctx.lineTo(x2 - tam * Math.cos(angSeta + 0.4), y2 - tam * Math.sin(angSeta + 0.4));
+      ctx.closePath();
+      ctx.fillStyle = corDeAcento();
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    // Resolve sobreposição: nós com ângulos muito próximos (a ponto dos círculos
+    // de 15px colidirem) são agrupados em clusters e espalhados tangencialmente
+    // (mesmo raio da trilha, ângulo ajustado), preservando um tick fino na posição
+    // angular real de cada um para não perder a leitura verdadeira do anel.
+    const nosOrdenados = [...nos].sort((a, b) => a.idLocal - b.idLocal);
+    const anguloMinimo = (15 * 2.4) / r; // separação angular mínima entre centros de nó
+
+    const clusters = [];
+    nosOrdenados.forEach(no => {
+      no._angReal = anguloPorId(no.idLocal);
+      const ultimoCluster = clusters[clusters.length - 1];
+      if (ultimoCluster && (no._angReal - ultimoCluster.angFinal) < anguloMinimo) {
+        ultimoCluster.nos.push(no);
+        ultimoCluster.angFinal = no._angReal;
+      } else {
+        clusters.push({ nos: [no], angFinal: no._angReal });
+      }
+    });
+    // funde o último cluster com o primeiro se ambos tocarem o "zero" do círculo
+    if (clusters.length > 1) {
+      const primeiro = clusters[0], ultimo = clusters[clusters.length - 1];
+      if ((primeiro.nos[0]._angReal + Math.PI * 2 - ultimo.angFinal) < anguloMinimo) {
+        ultimo.nos.push(...primeiro.nos);
+        clusters.shift();
+      }
+    }
+
+    clusters.forEach(cluster => {
+      const n = cluster.nos.length;
+      const angMedio = cluster.nos.reduce((s, no) => s + no._angReal, 0) / n;
+      cluster.nos.forEach((no, i) => {
+        no._angExibicao = n === 1
+          ? no._angReal
+          : angMedio + (i - (n - 1) / 2) * anguloMinimo;
+      });
+    });
+
+    nosOrdenados.forEach(no => {
+      const angReal = no._angReal;
+      const angExibicao = no._angExibicao;
+      const tickX1 = cx + Math.cos(angReal) * (r - 6), tickY1 = cy + Math.sin(angReal) * (r - 6);
+      const tickX2 = cx + Math.cos(angReal) * (r + 6), tickY2 = cy + Math.sin(angReal) * (r + 6);
+      const x = cx + Math.cos(angExibicao) * r;
+      const y = cy + Math.sin(angExibicao) * r;
+      const ang = angExibicao; // usado abaixo para o rótulo de porta
+
+      // tick na posição angular real, sempre visível mesmo se o nó for deslocado
+      ctx.beginPath();
+      ctx.moveTo(tickX1, tickY1);
+      ctx.lineTo(tickX2, tickY2);
+      ctx.strokeStyle = corDeAcento();
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // linha guia fina até o círculo deslocado, quando há colisão
+      if (Math.abs(angExibicao - angReal) > 0.001) {
+        ctx.beginPath();
+        ctx.moveTo(tickX2, tickY2);
+        ctx.lineTo(x, y);
+        ctx.strokeStyle = corDeTrack();
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      ctx.beginPath();
+      ctx.arc(x, y, 15, 0, Math.PI * 2);
+      ctx.fillStyle = corDePainel();
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = corDeAcento();
+      ctx.stroke();
+
+      ctx.fillStyle = corDeInk();
+      ctx.font = '600 11px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillText(no.idLocal, x, y);
+
+      ctx.font = '10px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = corDeInkDim();
+      const porta = no.endereco.split(':')[1] || '';
+      ctx.fillText(':' + porta, x + Math.cos(ang) * 22, y + Math.sin(ang) * 22);
+    });
+
+    ctx.font = '600 13px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = corDeInkDim();
+    ctx.fillText(nos.length + (nos.length === 1 ? ' nó' : ' nós'), cx, cy);
+  }
+
+  function escapeHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  function celulaChaves(no) {
+    const chaves = no.chaves || [];
+    if (chaves.length === 0) {
+      return '<span class="chaves-vazio">nenhuma</span>';
+    }
+    const itens = chaves.map(par =>
+      `<div class="chave-item"><span class="k">${escapeHtml(par.chave)}</span><span class="v">= ${escapeHtml(par.valor)}</span></div>`
+    ).join('');
+
+    if (chaves.length <= 2) {
+      return `<div class="chaves-lista">${itens}</div>`;
+    }
+    return `<details class="chaves-toggle"><summary>${chaves.length} chaves</summary><div class="chaves-lista">${itens}</div></details>`;
+  }
+
+  function preencherTabela(nos) {
+    tbody.innerHTML = '';
+    if (nos.length === 0) {
+      table.style.display = 'none';
+      emptyMsg.style.display = 'block';
+      return;
+    }
+    table.style.display = '';
+    emptyMsg.style.display = 'none';
+
+    nos.sort((a, b) => a.idLocal - b.idLocal).forEach(no => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><span class="id-badge">${no.idLocal}</span></td>
+        <td>${no.endereco}</td>
+        <td>${no.idSucessor} <span style="color:var(--ink-dim)">(${no.enderecoSucessor})</span></td>
+        <td>${no.idPredecessor} <span style="color:var(--ink-dim)">(${no.enderecoPredecessor})</span></td>
+        <td>${celulaChaves(no)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function buscarNo(base, porta) {
+    const r = await fetch(`${base}/dht_status/no_${porta}.json?_=${Date.now()}`);
+    if (!r.ok) throw new Error('not ok');
+    return r.json();
+  }
+
+  async function buscarStatus() {
+    const base = document.getElementById('serverUrl').value.replace(/\/$/, '');
+    const portasIniciais = document.getElementById('portsInput').value
+      .split(',').map(p => p.trim()).filter(Boolean);
+
+    // Busca em largura: parte das portas informadas e segue os ponteiros de
+    // sucessor/predecessor de cada nó encontrado, descobrindo automaticamente
+    // o resto do anel sem que você precise listar toda porta manualmente.
+    const visitadas = new Set();
+    const porVisitar = [...portasIniciais];
+    const encontrados = new Map(); // porta -> json
+
+    while (porVisitar.length > 0) {
+      const porta = porVisitar.shift();
+      if (visitadas.has(porta)) continue;
+      visitadas.add(porta);
+
+      try {
+        const dados = await buscarNo(base, porta);
+        encontrados.set(porta, dados);
+
+        [dados.enderecoSucessor, dados.enderecoPredecessor].forEach(endereco => {
+          const portaVizinho = (endereco || '').split(':')[1];
+          if (portaVizinho && !visitadas.has(portaVizinho)) {
+            porVisitar.push(portaVizinho);
+          }
+        });
+      } catch (e) {
+        // porta não respondeu — nó desligado ou nunca existiu, ignora
+      }
+    }
+
+    // Descarta nós cujo arquivo de status não é atualizado há mais de 12s —
+    // indica que o processo Java parou (estabilização roda a cada 5s, então
+    // um nó vivo nunca fica tão desatualizado assim).
+    const LIMITE_OBSOLETO_MS = 12000;
+    const agora = Date.now();
+    const nos = [...encontrados.values()]
+      .filter(no => no.atualizadoEm && (agora - no.atualizadoEm) < LIMITE_OBSOLETO_MS);
+
+    if (nos.length > 0) {
+      ultimoSucesso = Date.now();
+      dot.className = 'dot live';
+      statusText.textContent = `${nos.length} nós descobertos (${portasIniciais.join(', ')} + vizinhos) · atualizado ${new Date().toLocaleTimeString()}`;
+    } else {
+      const parado = ultimoSucesso === 0 || (Date.now() - ultimoSucesso > 4000);
+      dot.className = parado ? 'dot' : 'dot stale';
+      statusText.textContent = 'nenhum nó respondeu — verifique o servidor e as portas';
+    }
+
+    desenharAnel(nos);
+    preencherTabela(nos);
+  }
+
+  document.getElementById('applyBtn').addEventListener('click', buscarStatus);
+
+  buscarStatus();
+  setInterval(buscarStatus, 2000);
+  window.addEventListener('resize', () => buscarStatus());
+</script>
+
+</body>
+</html>
